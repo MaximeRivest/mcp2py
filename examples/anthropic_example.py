@@ -15,20 +15,14 @@ Usage:
 
 from mcp2py import load
 from anthropic import Anthropic
-
-# Load MCP server - use our test server for reliability
-import sys
 from pathlib import Path
 
-# Use test server from repo for demo
+# Use test server from repo
 test_server = Path(__file__).parent.parent / "tests" / "test_server.py"
-server = load(f"python {test_server}")
 
-try:
-    # Create Anthropic client
+with load(f"python {test_server}") as server:
     client = Anthropic()
 
-    # First call - Claude decides to use add tool
     response = client.messages.create(
         model="claude-3-5-sonnet-20241022",
         max_tokens=1024,
@@ -38,15 +32,7 @@ try:
 
     print("Claude's response:", response.stop_reason)
 
-    # If Claude wants to use a tool, execute it
     if response.stop_reason == "tool_use":
         tool_use = next(b for b in response.content if b.type == "tool_use")
-        print(f"Tool called: {tool_use.name}")
-        print(f"Arguments: {tool_use.input}")
-
-        # Execute via mcp2py
         result = getattr(server, tool_use.name)(**tool_use.input)
         print(f"Result: {result}")
-
-finally:
-    server.close()

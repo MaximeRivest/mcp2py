@@ -16,13 +16,13 @@ Usage:
 from mcp2py import load
 from openai import OpenAI
 from pathlib import Path
+import json
 
-# Use test server from repo for demo
+# Use test server from repo
 test_server = Path(__file__).parent.parent / "tests" / "test_server.py"
-server = load(f"python {test_server}")
 
-try:
-    # Convert MCP tools to OpenAI format
+with load(f"python {test_server}") as server:
+    # Convert to OpenAI format
     openai_tools = [
         {
             "type": "function",
@@ -35,10 +35,8 @@ try:
         for tool in server.tools
     ]
 
-    # Create OpenAI client
     client = OpenAI()
 
-    # Use tools with GPT
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         tools=openai_tools,
@@ -48,18 +46,8 @@ try:
     message = response.choices[0].message
     print("GPT response:", response.choices[0].finish_reason)
 
-    # If GPT wants to use a tool, execute it
     if message.tool_calls:
-        import json
-
         tool_call = message.tool_calls[0]
-        print(f"Tool called: {tool_call.function.name}")
-        print(f"Arguments: {tool_call.function.arguments}")
-
-        # Execute via mcp2py
         args = json.loads(tool_call.function.arguments)
         result = getattr(server, tool_call.function.name)(**args)
         print(f"Result: {result}")
-
-finally:
-    server.close()

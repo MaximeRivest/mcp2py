@@ -1,102 +1,78 @@
 # mcp2py AI SDK Examples
 
-Simple, working examples showing mcp2py with popular AI frameworks.
+Simple examples showing mcp2py with AI frameworks. **Cleanup is automatic.**
 
 ## Quick Start
 
 ```bash
 export ANTHROPIC_API_KEY=sk-...  # or OPENAI_API_KEY
 ./examples/anthropic_example.py
-./examples/openai_example.py
-./examples/dspy_example.py
 ```
 
-Each example:
-- Uses test server from this repo (reliable, no external dependencies)
-- Demonstrates tool calling with AI SDK
-- Properly handles server lifecycle
-- Self-contained UV script (auto-installs dependencies)
+That's it! UV installs dependencies, server auto-cleans up.
 
 ## Examples
 
 ### Anthropic (Claude)
 
-Shows Claude function calling with mcp2py:
-
 ```python
 from mcp2py import load
 from anthropic import Anthropic
 
-server = load("python server.py")
-client = Anthropic()
+with load("python server.py") as server:
+    client = Anthropic()
 
-response = client.messages.create(
-    tools=server.tools,  # ← Pass MCP tools
-    messages=[{"role": "user", "content": "What is 125 + 75?"}],
-)
+    response = client.messages.create(
+        tools=server.tools,
+        messages=[{"role": "user", "content": "What is 125 + 75?"}],
+    )
 
-# Claude calls tools, we execute via mcp2py
-if response.stop_reason == "tool_use":
-    tool_use = next(b for b in response.content if b.type == "tool_use")
-    result = getattr(server, tool_use.name)(**tool_use.input)
+    if response.stop_reason == "tool_use":
+        tool_use = next(b for b in response.content if b.type == "tool_use")
+        result = getattr(server, tool_use.name)(**tool_use.input)
 ```
 
-### OpenAI (GPT-4)
-
-Shows GPT function calling with format conversion:
+### OpenAI (GPT)
 
 ```python
 from mcp2py import load
 from openai import OpenAI
 
-server = load("python server.py")
+with load("python server.py") as server:
+    openai_tools = [
+        {"type": "function", "function": {
+            "name": t["name"],
+            "description": t["description"],
+            "parameters": t["inputSchema"],
+        }}
+        for t in server.tools
+    ]
 
-# Convert to OpenAI format
-openai_tools = [
-    {"type": "function", "function": {
-        "name": t["name"],
-        "description": t["description"],
-        "parameters": t["inputSchema"],
-    }}
-    for t in server.tools
-]
-
-response = client.chat.completions.create(
-    tools=openai_tools,
-    messages=[{"role": "user", "content": "What is 125 + 75?"}],
-)
+    response = client.chat.completions.create(
+        tools=openai_tools,
+        messages=[{"role": "user", "content": "What is 125 + 75?"}],
+    )
 ```
 
 ### DSPy (Agents)
-
-Shows wrapping MCP tools as callables for DSPy:
 
 ```python
 import dspy
 from mcp2py import load
 
-server = load("python server.py")
+with load("python server.py") as server:
+    def add_numbers(a: int, b: int) -> int:
+        return int(server.add(a=a, b=b).split(": ")[1])
 
-# DSPy needs callables - wrap MCP tools
-def add_numbers(a: int, b: int) -> int:
-    result = server.add(a=a, b=b)
-    return int(result.split(": ")[1])
-
-add_tool = dspy.Tool(add_numbers)
-agent = dspy.ReAct(Calculator, tools=[add_tool])
-result = agent(question="What is 125 + 75?")
+    agent = dspy.ReAct(Calculator, tools=[dspy.Tool(add_numbers)])
+    result = agent(question="What is 125 + 75?")
 ```
 
-## UV Script Format
+## Key Points
 
-Each example uses PEP 723 inline metadata:
+- **`with load(...)`** - Context manager handles cleanup automatically
+- **Self-contained** - Uses test server from repo, works offline
+- **UV scripts** - Dependencies auto-install, just run it
+- **Simple** - Shows exactly what you'd write in production
 
-```python
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.13"
-# dependencies = ["mcp2py>=0.2.0", "anthropic"]
-# ///
-```
-
-UV automatically installs dependencies and runs the script. No setup needed!
+No try/finally, no manual cleanup, no ceremony. **It just works.**
