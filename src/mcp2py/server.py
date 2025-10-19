@@ -4,6 +4,7 @@ This module provides the MCPServer class which wraps an MCPClient and exposes
 tools as Python methods with automatic name conversion and result unwrapping.
 """
 
+import atexit
 from typing import Any
 
 from mcp2py.client import MCPClient
@@ -43,6 +44,7 @@ class MCPServer:
         self._client = client
         self._runner = runner
         self._tools = {tool["name"]: tool for tool in tools}
+        self._closed = False
 
         # Create bidirectional mapping: snake_case <-> original
         self._name_map: dict[str, str] = {}
@@ -51,6 +53,9 @@ class MCPServer:
             # Only map if different (don't override already snake_case names)
             if snake_name != original_name:
                 self._name_map[snake_name] = original_name
+
+        # Register cleanup on exit (for REPL/notebook usage without 'with')
+        atexit.register(self.close)
 
     def __getattr__(self, name: str) -> Any:
         """Dynamically create tool methods.
@@ -168,13 +173,16 @@ class MCPServer:
             >>> server = load("python tests/test_server.py")
             >>> server.close()
         """
-        if not hasattr(self, "_closed"):
-            self._closed = False
-
         if self._closed:
             return
 
         self._closed = True
+
+        # Unregister atexit handler (if called explicitly)
+        try:
+            atexit.unregister(self.close)
+        except Exception:
+            pass
 
         # Close client connection (stops subprocess)
         try:

@@ -5,11 +5,15 @@ Simple examples showing mcp2py with AI frameworks. **Cleanup is automatic.**
 ## Quick Start
 
 ```bash
+# Simplest possible - no context manager needed
+./examples/simple_example.py
+
+# With AI SDKs
 export ANTHROPIC_API_KEY=sk-...  # or OPENAI_API_KEY
 ./examples/anthropic_example.py
 ```
 
-That's it! UV installs dependencies, server auto-cleans up.
+**Cleanup is automatic** - use `with load(...)` or just `load()`. Both work!
 
 ## Examples
 
