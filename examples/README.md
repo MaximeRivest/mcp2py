@@ -1,118 +1,108 @@
-# mcp2py Examples
+# mcp2py AI SDK Examples
 
-These examples demonstrate how to use mcp2py with popular AI SDKs.
-
-## Features
-
-✨ **Self-contained UV scripts** - No manual dependency installation needed!
-🚀 **One-line execution** - Just run them with `uv`
-📦 **PEP 723 inline metadata** - Dependencies declared in the script itself
+Simple examples showing how to use mcp2py with popular AI frameworks.
 
 ## Quick Start
 
-All examples use UV's inline script metadata (PEP 723). Just run them directly:
+Each example is a self-contained UV script. Just run it:
 
 ```bash
-# Set your API key
-export ANTHROPIC_API_KEY=your_key_here
-# or
-export OPENAI_API_KEY=your_key_here
-
-# Run any example
-uv run examples/anthropic_example.py
-uv run examples/openai_example.py
-uv run examples/dspy_example.py
-
-# Or make them executable and run directly
-chmod +x examples/*.py
+export ANTHROPIC_API_KEY=sk-...  # or OPENAI_API_KEY
 ./examples/anthropic_example.py
+./examples/openai_example.py
+./examples/dspy_example.py
 ```
 
-UV will automatically:
-- Create a virtual environment
-- Install dependencies (mcp2py + the AI SDK)
-- Run the script
-- Cache everything for next time
+UV automatically installs dependencies and runs the script.
 
 ## Examples
 
-### 1. Anthropic SDK (Claude)
+### Anthropic (Claude)
 
-**File**: `anthropic_example.py`
+**`anthropic_example.py`** - Pass `server.tools` directly to Claude:
 
-Shows how to use mcp2py with Claude for function calling:
-- Load MCP server
-- Pass `server.tools` directly to Anthropic SDK
-- Execute tools via mcp2py
-- Send results back to Claude
+```python
+from mcp2py import load
+from anthropic import Anthropic
 
-```bash
-export ANTHROPIC_API_KEY=your_key_here
-uv run examples/anthropic_example.py
+server = load("npx -y @modelcontextprotocol/server-everything")
+client = Anthropic()
+
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    tools=server.tools,  # ← Works directly!
+    messages=[{"role": "user", "content": "Add 125 and 75"}],
+)
 ```
 
-### 2. OpenAI SDK (GPT-4)
+### OpenAI (GPT-4)
 
-**File**: `openai_example.py`
+**`openai_example.py`** - Convert tools to OpenAI format:
 
-Shows how to use mcp2py with OpenAI for function calling:
-- Load MCP server
-- Convert tools to OpenAI format
-- Execute tools via mcp2py
-- Send results back to GPT-4
+```python
+from mcp2py import load
+from openai import OpenAI
 
-```bash
-export OPENAI_API_KEY=your_key_here
-uv run examples/openai_example.py
+server = load("npx -y @modelcontextprotocol/server-everything")
+
+openai_tools = [
+    {"type": "function", "function": {
+        "name": t["name"],
+        "description": t["description"],
+        "parameters": t["inputSchema"],
+    }}
+    for t in server.tools
+]
+
+client = OpenAI()
+response = client.chat.completions.create(
+    model="gpt-4o",
+    tools=openai_tools,
+    messages=[{"role": "user", "content": "Add 125 and 75"}],
+)
 ```
 
-### 3. DSPy (Agentic Workflows)
+### DSPy (Agents)
 
-**File**: `dspy_example.py`
+**`dspy_example.py`** - Wrap MCP tools as callables:
 
-Shows how to use mcp2py with DSPy ReAct agent:
-- Load MCP server
-- Create ReAct agent with `server.tools`
-- Agent automatically plans and executes tools
-- Get final answer
+```python
+import dspy
+from mcp2py import load
 
-```bash
-export OPENAI_API_KEY=your_key_here  # or ANTHROPIC_API_KEY
-uv run examples/dspy_example.py
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+server = load("npx -y @modelcontextprotocol/server-everything")
+
+# Wrap MCP tool as callable
+def add_numbers(a: int, b: int) -> int:
+    return int(server.add(a=a, b=b))
+
+add_tool = dspy.Tool(add_numbers)
+
+# Create agent
+agent = dspy.ReAct(Calculator, tools=[add_tool])
+result = agent(question="What is 125 + 75?")
 ```
 
-## How It Works
+## How UV Scripts Work
 
-Each script has inline metadata at the top:
+Each example starts with inline metadata:
 
 ```python
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
-#     "mcp2py",
-#     "anthropic",  # or "openai", "dspy"
+#     "mcp2py>=0.2.0",
+#     "anthropic",
 # ]
 # ///
 ```
 
-This tells UV:
-- Python version requirement
-- Dependencies to install
-- How to run the script
+UV reads this and:
+1. Creates a virtual environment
+2. Installs dependencies
+3. Runs the script
+4. Caches everything for next time
 
-## Development
-
-When running from the mcp2py repository, the scripts automatically use the local version:
-
-```python
-# For local development - use local mcp2py if available
-if (Path(__file__).parent.parent / "src" / "mcp2py").exists():
-    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-```
-
-## Learn More
-
-- [UV Scripts Guide](https://docs.astral.sh/uv/guides/scripts/)
-- [PEP 723 - Inline Script Metadata](https://peps.python.org/pep-0723/)
-- [mcp2py Documentation](https://github.com/MaximeRivest/mcp2py)
+No `pip install` needed!
