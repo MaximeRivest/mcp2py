@@ -339,93 +339,79 @@ jobs:
 - `test_package_builds_successfully`
 - `test_license_file_exists`
 
-### 1.2 JSON-RPC Transport Layer
-**Files**: `src/mcp2py/transport/base.py`, `src/mcp2py/transport/stdio.py`
+### 1.2 ✅ COMPLETED - Migrated to Official MCP SDK
 
-**Core classes**:
-```python
-class Transport(Protocol):
-    """Abstract transport for MCP communication."""
+**Decision**: Use official `mcp` Python SDK instead of custom implementation
 
-    async def send(self, message: dict) -> None:
-        """Send JSON-RPC message.
+**Rationale**:
+- Official SDK is battle-tested and Anthropic-maintained
+- Reduces maintenance burden (protocol updates handled by SDK)
+- Lighter codebase (deleted 412 LOC of custom code)
+- Better foundation for our unique high-level API
 
-        Example:
-            >>> transport = StdioTransport(["npx", "server"])
-            >>> await transport.send({"jsonrpc": "2.0", "method": "ping"})
-        """
+**Implementation**: `src/mcp2py/client.py`
 
-    async def receive(self) -> dict:
-        """Receive JSON-RPC message."""
-
-class StdioTransport:
-    """stdio-based transport for local MCP servers.
-
-    Example:
-        >>> transport = StdioTransport(["npx", "-y", "@h1deya/mcp-server-weather"])
-        >>> await transport.connect()
-        >>> msg = await transport.receive()
-        >>> "jsonrpc" in msg
-        True
-    """
-```
-
-**Tests**:
-- `test_stdio_transport_launches_process`
-- `test_stdio_transport_sends_receives_json`
-- `test_stdio_transport_handles_process_crash`
-- `test_stdio_transport_cleanup_on_close`
-
-**Key behaviors**:
-- Launches subprocess correctly
-- Sends/receives valid JSON-RPC
-- Handles process errors gracefully
-- Cleans up resources
-
-### 1.3 MCP Protocol Implementation
-**Files**: `src/mcp2py/protocol.py`
-
-**Core classes**:
+**Core class**:
 ```python
 class MCPClient:
-    """Low-level MCP protocol client.
+    """Wrapper around official MCP SDK's ClientSession.
 
-    Handles:
-    - Initialize handshake
-    - Capability negotiation
-    - Request/response correlation
-    - Error handling
+    Provides same interface as our previous custom implementation,
+    but delegates to official SDK for protocol handling.
 
     Example:
-        >>> client = MCPClient(transport)
-        >>> await client.initialize(client_info={"name": "mcp2py"})
+        >>> client = MCPClient(["python", "server.py"])
+        >>> await client.connect()
+        >>> await client.initialize({"name": "mcp2py", "version": "0.1.0"})
         >>> tools = await client.list_tools()
-        >>> len(tools) > 0
-        True
+        >>> result = await client.call_tool("echo", {"message": "hello"})
+        >>> await client.close()
     """
 
+    async def connect(self) -> None:
+        """Connect via official SDK's stdio_client."""
+
     async def initialize(self, client_info: dict) -> dict:
-        """Initialize MCP session."""
+        """Initialize using SDK's ClientSession.initialize()."""
 
     async def list_tools(self) -> list[dict]:
-        """List available tools."""
+        """List tools using SDK's ClientSession.list_tools()."""
 
     async def call_tool(self, name: str, arguments: dict) -> dict:
-        """Call a tool and return result."""
+        """Call tool using SDK's ClientSession.call_tool()."""
 ```
 
-**Tests**:
+**Tests**: 11/11 passing
 - `test_initialize_handshake_succeeds`
 - `test_list_tools_returns_valid_schemas`
 - `test_call_tool_executes_and_returns_content`
 - `test_handles_server_errors_gracefully`
 - `test_request_id_correlation`
+- `test_initialize_required_before_other_calls`
+- `test_call_tool_with_different_argument_types`
+- `test_multiple_sequential_tool_calls`
 
-**Key behaviors**:
-- Completes initialize handshake per spec
-- Lists tools with valid JSON schemas
-- Calls tools and unwraps results
-- Handles errors without crashing
+**Quality metrics**: 88% coverage, mypy --strict clean
+
+### 1.3 Architecture Now
+
+```
+mcp2py (our unique value: simple Python API)
+    ↓
+mcp2py.client.MCPClient (thin wrapper)
+    ↓
+mcp.ClientSession (official SDK - protocol implementation)
+    ↓
+MCP Server (any implementation)
+```
+
+**Dependencies**:
+```toml
+dependencies = [
+    "mcp>=1.18.0",       # Official MCP Python SDK
+    "litellm>=1.0.0",    # For sampling (Phase 3)
+]
+```
 
 ### 1.4 Basic `load()` Function
 **Files**: `src/mcp2py/loader.py`, `src/mcp2py/__init__.py`
