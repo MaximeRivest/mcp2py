@@ -15,31 +15,51 @@ Usage:
 
 from mcp2py import load
 from openai import OpenAI
+from pathlib import Path
 
-# Load MCP server
-server = load("npx -y @modelcontextprotocol/server-everything")
+# Use test server from repo for demo
+test_server = Path(__file__).parent.parent / "tests" / "test_server.py"
+server = load(f"python {test_server}")
 
-# Convert MCP tools to OpenAI format
-openai_tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": tool["name"],
-            "description": tool["description"],
-            "parameters": tool["inputSchema"],
-        },
-    }
-    for tool in server.tools
-]
+try:
+    # Convert MCP tools to OpenAI format
+    openai_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["inputSchema"],
+            },
+        }
+        for tool in server.tools
+    ]
 
-# Create OpenAI client
-client = OpenAI()
+    # Create OpenAI client
+    client = OpenAI()
 
-# Use tools with GPT
-response = client.chat.completions.create(
-    model="gpt-4o",
-    tools=openai_tools,
-    messages=[{"role": "user", "content": "Add 125 and 75"}],
-)
+    # Use tools with GPT
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        tools=openai_tools,
+        messages=[{"role": "user", "content": "What is 125 plus 75?"}],
+    )
 
-print(response)
+    message = response.choices[0].message
+    print("GPT response:", response.choices[0].finish_reason)
+
+    # If GPT wants to use a tool, execute it
+    if message.tool_calls:
+        import json
+
+        tool_call = message.tool_calls[0]
+        print(f"Tool called: {tool_call.function.name}")
+        print(f"Arguments: {tool_call.function.arguments}")
+
+        # Execute via mcp2py
+        args = json.loads(tool_call.function.arguments)
+        result = getattr(server, tool_call.function.name)(**args)
+        print(f"Result: {result}")
+
+finally:
+    server.close()

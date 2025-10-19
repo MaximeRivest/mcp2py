@@ -1,10 +1,8 @@
 # mcp2py AI SDK Examples
 
-Simple examples showing how to use mcp2py with popular AI frameworks.
+Simple, working examples showing mcp2py with popular AI frameworks.
 
 ## Quick Start
-
-Each example is a self-contained UV script. Just run it:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-...  # or OPENAI_API_KEY
@@ -13,38 +11,47 @@ export ANTHROPIC_API_KEY=sk-...  # or OPENAI_API_KEY
 ./examples/dspy_example.py
 ```
 
-UV automatically installs dependencies and runs the script.
+Each example:
+- Uses test server from this repo (reliable, no external dependencies)
+- Demonstrates tool calling with AI SDK
+- Properly handles server lifecycle
+- Self-contained UV script (auto-installs dependencies)
 
 ## Examples
 
 ### Anthropic (Claude)
 
-**`anthropic_example.py`** - Pass `server.tools` directly to Claude:
+Shows Claude function calling with mcp2py:
 
 ```python
 from mcp2py import load
 from anthropic import Anthropic
 
-server = load("npx -y @modelcontextprotocol/server-everything")
+server = load("python server.py")
 client = Anthropic()
 
 response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    tools=server.tools,  # ← Works directly!
-    messages=[{"role": "user", "content": "Add 125 and 75"}],
+    tools=server.tools,  # ← Pass MCP tools
+    messages=[{"role": "user", "content": "What is 125 + 75?"}],
 )
+
+# Claude calls tools, we execute via mcp2py
+if response.stop_reason == "tool_use":
+    tool_use = next(b for b in response.content if b.type == "tool_use")
+    result = getattr(server, tool_use.name)(**tool_use.input)
 ```
 
 ### OpenAI (GPT-4)
 
-**`openai_example.py`** - Convert tools to OpenAI format:
+Shows GPT function calling with format conversion:
 
 ```python
 from mcp2py import load
 from openai import OpenAI
 
-server = load("npx -y @modelcontextprotocol/server-everything")
+server = load("python server.py")
 
+# Convert to OpenAI format
 openai_tools = [
     {"type": "function", "function": {
         "name": t["name"],
@@ -54,55 +61,42 @@ openai_tools = [
     for t in server.tools
 ]
 
-client = OpenAI()
 response = client.chat.completions.create(
-    model="gpt-4o",
     tools=openai_tools,
-    messages=[{"role": "user", "content": "Add 125 and 75"}],
+    messages=[{"role": "user", "content": "What is 125 + 75?"}],
 )
 ```
 
 ### DSPy (Agents)
 
-**`dspy_example.py`** - Wrap MCP tools as callables:
+Shows wrapping MCP tools as callables for DSPy:
 
 ```python
 import dspy
 from mcp2py import load
 
-dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
-server = load("npx -y @modelcontextprotocol/server-everything")
+server = load("python server.py")
 
-# Wrap MCP tool as callable
+# DSPy needs callables - wrap MCP tools
 def add_numbers(a: int, b: int) -> int:
-    return int(server.add(a=a, b=b))
+    result = server.add(a=a, b=b)
+    return int(result.split(": ")[1])
 
 add_tool = dspy.Tool(add_numbers)
-
-# Create agent
 agent = dspy.ReAct(Calculator, tools=[add_tool])
 result = agent(question="What is 125 + 75?")
 ```
 
-## How UV Scripts Work
+## UV Script Format
 
-Each example starts with inline metadata:
+Each example uses PEP 723 inline metadata:
 
 ```python
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.13"
-# dependencies = [
-#     "mcp2py>=0.2.0",
-#     "anthropic",
-# ]
+# dependencies = ["mcp2py>=0.2.0", "anthropic"]
 # ///
 ```
 
-UV reads this and:
-1. Creates a virtual environment
-2. Installs dependencies
-3. Runs the script
-4. Caches everything for next time
-
-No `pip install` needed!
+UV automatically installs dependencies and runs the script. No setup needed!
