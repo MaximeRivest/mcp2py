@@ -137,6 +137,27 @@ print(weather.current_config)      # Dynamic resource
 prompt = weather.create_weather_report(location="NYC", style="casual")
 ```
 
+### Use with AI SDKs (Anthropic, OpenAI, DSPy, etc.)
+
+**The `.tools` attribute gives you AI-ready tool schemas**:
+
+```python
+from mcp2py import load
+
+server = load("npx -y @modelcontextprotocol/server-filesystem /tmp")
+
+# Get tools in MCP format (works with all AI SDKs)
+print(server.tools)
+# [
+#   {
+#     "name": "read_file",
+#     "description": "Read a file from the filesystem",
+#     "inputSchema": {...}
+#   },
+#   ...
+# ]
+```
+
 ### Working with AI SDKs
 
 The `.tools` attribute gives you a list ready for AI frameworks:

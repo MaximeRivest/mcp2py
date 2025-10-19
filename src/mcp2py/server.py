@@ -98,6 +98,41 @@ class MCPServer:
 
         return tool_method
 
+    @property
+    def tools(self) -> list[dict[str, Any]]:
+        """Get tool schemas compatible with AI SDKs.
+
+        Returns tool schemas in MCP format that work with:
+        - Anthropic SDK (Claude)
+        - OpenAI SDK (GPT-4, etc.)
+        - LiteLLM
+        - Google Gemini SDK
+        - DSPy
+        - Agno
+
+        Returns:
+            List of tool schemas with name, description, and inputSchema
+
+        Example:
+            >>> server = load("python tests/test_server.py")
+            >>> tools = server.tools
+            >>> len(tools) > 0
+            True
+            >>> tools[0]["name"]
+            'echo'
+            >>> "inputSchema" in tools[0]
+            True
+            >>> server.close()
+        """
+        return [
+            {
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "inputSchema": tool.get("inputSchema", {"type": "object", "properties": {}}),
+            }
+            for tool in self._tools.values()
+        ]
+
     def _unwrap_result(self, result: dict[str, Any]) -> Any:
         """Extract content from MCP response.
 
