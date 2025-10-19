@@ -6,13 +6,17 @@ Example:
     >>> result = server.get_alerts(state="CA")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Phase 1.3: MCP Client (wraps official SDK)
 from mcp2py.client import MCPClient
 
+# Phase 1.4: High-level API
+from mcp2py.loader import load
+from mcp2py.server import MCPServer
+
 # Will be implemented in later phases
-# from mcp2py.loader import load, aload
+# from mcp2py.loader import aload
 # from mcp2py.config import configure, register
 
-__all__ = ["MCPClient", "__version__"]
+__all__ = ["load", "MCPClient", "MCPServer", "__version__"]
