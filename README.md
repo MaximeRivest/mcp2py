@@ -1,6 +1,46 @@
 # mcp2py: Turn any MCP server into a Python module
 
-MCP servers are great—they offer a protocol for exposing **tools**, **resources**, and **prompts** (string templates). We've leveraged that and built a simple, delightful tool to turn any MCP server into a Python module where:
+**Use any MCP server in 3 lines of Python code.**
+
+```python
+from mcp2py import load
+
+server = load("npx -y @modelcontextprotocol/server-filesystem /tmp")
+server.list_directory(path="/tmp")
+```
+
+That's it. No configuration, no async/await, no setup. **Just import, load, and call.**
+
+---
+
+## Quick Start
+
+**1. Install**
+```bash
+pip install mcp2py
+```
+
+**2. Use it**
+```python
+from mcp2py import load
+
+# Load any MCP server
+server = load("npx -y @modelcontextprotocol/server-filesystem /tmp")
+
+# Tools become Python methods
+files = server.list_directory(path="/tmp")
+content = server.read_file(path="/tmp/test.txt")
+```
+
+**3. That's it!**
+
+The server runs as a subprocess, tools are Python methods, everything just works.
+
+---
+
+## What is MCP?
+
+MCP servers expose **tools**, **resources**, and **prompts** via a protocol. mcp2py turns them into Python:
 
 - 🔧 **Tools** → Python functions
 - 📦 **Resources** → Python constants/attributes
