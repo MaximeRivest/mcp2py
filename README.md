@@ -137,46 +137,46 @@ print(weather.current_config)      # Dynamic resource
 prompt = weather.create_weather_report(location="NYC", style="casual")
 ```
 
-### Use with AI SDKs (Anthropic, OpenAI, DSPy, etc.)
+### Use with AI Frameworks (DSPy, Claudette, etc.)
 
-**The `.tools` attribute gives you AI-ready tool schemas**:
+**The `.tools` attribute gives you a list of callable Python functions**:
 
 ```python
 from mcp2py import load
 
 server = load("npx -y @modelcontextprotocol/server-filesystem /tmp")
 
-# Get tools in MCP format (works with all AI SDKs)
-print(server.tools)
-# [
-#   {
-#     "name": "read_file",
-#     "description": "Read a file from the filesystem",
-#     "inputSchema": {...}
-#   },
-#   ...
-# ]
+# Get tools as callable functions
+tools = server.tools
+# [<function read_file>, <function write_file>, ...]
+
+# Each function has __name__ and __doc__
+print(tools[0].__name__)  # "read_file"
+print(tools[0].__doc__)   # "Read a file from the filesystem"
+
+# And they're callable!
+result = tools[0](path="/tmp/test.txt")
 ```
 
-### Working with AI SDKs
+### Working with AI Frameworks
 
-The `.tools` attribute gives you a list ready for AI frameworks:
+The `.tools` attribute gives you callable functions ready for frameworks like DSPy and Claudette:
 
 ```python
 from mcp2py import load
 import dspy
 
 # Load MCP server
-travel = load("python", "airline_server.py")
+travel = load("python airline_server.py")
 
-# Use with DSPy - tools are ready to go
+# Use with DSPy - pass callable functions directly
 class CustomerService(dspy.Signature):
     user_request: str = dspy.InputField()
     result: str = dspy.OutputField()
 
 dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
 
-# Pass tools directly to DSPy
+# Pass tools directly to DSPy (it expects callables)
 react = dspy.ReAct(CustomerService, tools=travel.tools)
 
 result = react(user_request="Book a flight from SFO to JFK on 09/01/2025")
@@ -184,26 +184,21 @@ print(result)
 ```
 
 ```python
-# Works with Anthropic SDK too
-import anthropic
+# Also works with Claudette
 from mcp2py import load
+from claudette import Chat
 
 weather = load("npx -y @h1deya/mcp-server-weather")
 
-client = anthropic.Anthropic()
-response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    max_tokens=1024,
-    tools=weather.tools,  # Direct from mcp2py
-    messages=[{"role": "user", "content": "What's the weather in Tokyo?"}]
-)
+# Claudette expects callable functions
+chat = Chat(model="claude-3-5-sonnet-20241022", tools=weather.tools)
 
-# If Claude calls a tool
-if response.stop_reason == "tool_use":
-    tool_use = response.content[0]
-    # Call the tool via Python function
-    result = getattr(weather, tool_use.name)(**tool_use.input)
+response = chat("What's the weather in Tokyo?")
+# Claudette automatically calls the tools as needed
+print(response)
 ```
+
+**Note:** For SDKs that have native MCP support (Anthropic, OpenAI, Google Gemini), use their built-in MCP integration directly. The `.tools` attribute is for frameworks like DSPy and Claudette that expect Python callables.
 
 ### Type Safety & IDE Support
 

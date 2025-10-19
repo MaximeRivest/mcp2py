@@ -5,6 +5,7 @@ maintaining the same interface as our previous custom implementation while using
 the battle-tested official SDK under the hood.
 """
 
+import asyncio
 from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
@@ -17,11 +18,11 @@ class MCPClient:
     Provides the same interface as our previous custom implementation,
     but delegates to the official SDK for protocol handling.
 
-    Note: This class uses context managers internally. The connect() and close()
-    methods manage the lifecycle of the underlying stdio_client and ClientSession.
+    This implementation maintains the stdio and session contexts as long-running
+    background tasks to ensure the subprocess and connections stay alive.
 
     Example:
-        >>> client = MCPClient([" python", "server.py"])
+        >>> client = MCPClient(["python", "server.py"])
         >>> await client.connect()
         >>> await client.initialize({"name": "mcp2py", "version": "0.1.0"})
         >>> tools = await client.list_tools()
@@ -52,9 +53,11 @@ class MCPClient:
         self._session: ClientSession | None = None
         self._initialized = False
 
-        # Keep references to the read/write streams
-        self._read: Any = None
-        self._write: Any = None
+        # Context manager task and events
+        self._context_task: asyncio.Task[None] | None = None
+        self._ready_event: asyncio.Event | None = None
+        self._shutdown_event: asyncio.Event | None = None
+        self._connection_error: Exception | None = None
 
     async def connect(self) -> None:
         """Connect to MCP server via stdio transport.
@@ -67,17 +70,65 @@ class MCPClient:
         Example:
             >>> await client.connect()
         """
-        # Create stdio connection and get read/write streams
-        # We need to keep the context alive, so we don't use "async with" here
-        from mcp.client.stdio import stdio_client as _stdio_client_func
+        # Get the current event loop (will be the AsyncRunner's background loop)
+        loop = asyncio.get_running_loop()
 
-        # Create the stdio connection
-        self._stdio_manager = _stdio_client_func(self.server_params)
-        self._read, self._write = await self._stdio_manager.__aenter__()
+        # Create events for coordination
+        self._ready_event = asyncio.Event()
+        self._shutdown_event = asyncio.Event()
+        self._connection_error = None
 
-        # Create and enter client session context
-        self._session_manager = ClientSession(self._read, self._write)
-        self._session = await self._session_manager.__aenter__()
+        # Start context manager task in the current (background) loop
+        self._context_task = loop.create_task(self._run_contexts())
+
+        # Wait for connection to be ready (or error)
+        await self._ready_event.wait()
+
+        # Check if connection failed
+        if self._connection_error:
+            cmd = f"{self.server_params.command} {' '.join(self.server_params.args)}"
+            raise RuntimeError(
+                f"Failed to connect to MCP server '{cmd}': {self._connection_error}\n\n"
+                f"This could be caused by:\n"
+                f"  - Server executable not found or not executable\n"
+                f"  - Server crashing during startup\n"
+                f"  - Missing dependencies or configuration\n"
+                f"  - In Jupyter: try restarting the kernel\n\n"
+                f"Try running the command manually to diagnose:\n"
+                f"  $ {cmd}"
+            ) from self._connection_error
+
+        if self._session is None:
+            raise RuntimeError("Failed to establish session - unknown error")
+
+    async def _run_contexts(self) -> None:
+        """Run the stdio and session contexts as a long-lived task.
+
+        This keeps the subprocess and connections alive throughout the session.
+        """
+        try:
+            async with stdio_client(self.server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    self._session = session
+
+                    # Signal that we're ready (connection successful)
+                    if self._ready_event:
+                        self._ready_event.set()
+
+                    # Keep contexts alive until shutdown
+                    if self._shutdown_event:
+                        await self._shutdown_event.wait()
+        except Exception as e:
+            # Store error for connect() to retrieve
+            self._connection_error = e
+
+            # Signal ready so connect() can proceed and raise the error
+            if self._ready_event:
+                self._ready_event.set()
+
+            # Don't re-raise here - let connect() handle it
+        finally:
+            self._session = None
 
     async def initialize(self, client_info: dict[str, str]) -> dict[str, Any]:
         """Initialize MCP session with the server.
@@ -194,18 +245,26 @@ class MCPClient:
         Example:
             >>> await client.close()
         """
-        # Exit contexts in reverse order
-        if hasattr(self, '_session_manager') and self._session_manager:
-            try:
-                await self._session_manager.__aexit__(None, None, None)
-            except Exception:
-                pass
+        # Signal shutdown to context task
+        if self._shutdown_event:
+            self._shutdown_event.set()
 
-        if hasattr(self, '_stdio_manager') and self._stdio_manager:
+        # Wait for context task to complete
+        if self._context_task:
             try:
-                await self._stdio_manager.__aexit__(None, None, None)
+                await asyncio.wait_for(self._context_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                # Force cancel if it doesn't shut down gracefully
+                self._context_task.cancel()
+                try:
+                    await self._context_task
+                except asyncio.CancelledError:
+                    pass
             except Exception:
                 pass
 
         self._session = None
         self._initialized = False
+        self._context_task = None
+        self._ready_event = None
+        self._shutdown_event = None

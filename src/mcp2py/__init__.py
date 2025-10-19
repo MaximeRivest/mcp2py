@@ -6,7 +6,7 @@ Example:
     >>> result = server.get_alerts(state="CA")
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Phase 1.3: MCP Client (wraps official SDK)
 from mcp2py.client import MCPClient

@@ -104,39 +104,69 @@ class MCPServer:
         return tool_method
 
     @property
-    def tools(self) -> list[dict[str, Any]]:
-        """Get tool schemas compatible with AI SDKs.
+    def tools(self) -> list[Any]:
+        """Get list of callable tool functions.
 
-        Returns tool schemas in MCP format that work with:
-        - Anthropic SDK (Claude)
-        - OpenAI SDK (GPT-4, etc.)
-        - LiteLLM
-        - Google Gemini SDK
-        - DSPy
-        - Agno
+        Returns callable functions for libraries like Claudette and DSPy
+        that expect Python functions rather than JSON schemas.
+
+        Each function has:
+        - __name__: Tool name (snake_case)
+        - __doc__: Tool description
+        - Proper function signature with typed parameters
+        - Callable interface
 
         Returns:
-            List of tool schemas with name, description, and inputSchema
+            List of callable tool functions
 
         Example:
             >>> server = load("python tests/test_server.py")
             >>> tools = server.tools
             >>> len(tools) > 0
             True
-            >>> tools[0]["name"]
-            'echo'
-            >>> "inputSchema" in tools[0]
+            >>> callable(tools[0])
             True
+            >>> tools[0].__name__
+            'echo'
             >>> server.close()
         """
-        return [
-            {
-                "name": tool["name"],
-                "description": tool.get("description", ""),
-                "inputSchema": tool.get("inputSchema", {"type": "object", "properties": {}}),
-            }
-            for tool in self._tools.values()
-        ]
+        from mcp2py.schema import create_function_with_signature
+
+        tool_functions = []
+        for tool_name in self._tools.keys():
+            # Get snake_case version if available
+            snake_name = None
+            for snake, orig in self._name_map.items():
+                if orig == tool_name:
+                    snake_name = snake
+                    break
+
+            # Use snake_case name if available, otherwise original
+            name = snake_name if snake_name else tool_name
+
+            # Get tool schema
+            tool_schema = self._tools[tool_name]
+            input_schema = tool_schema.get("inputSchema", {})
+            description = tool_schema.get("description", "")
+
+            # Create implementation that captures tool_name in closure
+            def make_implementation(_tool_name: str = tool_name):
+                def impl(**kwargs: Any) -> Any:
+                    result = self._runner.run(self._client.call_tool(_tool_name, kwargs))
+                    return self._unwrap_result(result)
+                return impl
+
+            # Create function with proper signature from JSON schema
+            tool_func = create_function_with_signature(
+                name=name,
+                description=description,
+                input_schema=input_schema,
+                implementation=make_implementation()
+            )
+
+            tool_functions.append(tool_func)
+
+        return tool_functions
 
     def _unwrap_result(self, result: dict[str, Any]) -> Any:
         """Extract content from MCP response.

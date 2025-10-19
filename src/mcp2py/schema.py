@@ -116,3 +116,98 @@ def json_schema_to_python_type(schema: dict[str, object]) -> type:
     if isinstance(json_type_value, str):
         return type_map.get(json_type_value, object)
     return object
+
+
+def create_function_with_signature(
+    name: str,
+    description: str,
+    input_schema: dict,
+    implementation: callable
+) -> callable:
+    """Create a function with proper signature from JSON schema.
+
+    This creates a real Python function with typed parameters that can be
+    inspected by tools like DSPy, inspect.signature(), etc.
+
+    Args:
+        name: Function name
+        description: Function docstring
+        input_schema: JSON Schema for function parameters
+        implementation: Callable that takes **kwargs and executes the tool
+
+    Returns:
+        Function with proper signature
+
+    Example:
+        >>> def impl(**kwargs):
+        ...     return f"Called with {kwargs}"
+        >>> schema = {
+        ...     "type": "object",
+        ...     "properties": {
+        ...         "url": {"type": "string"},
+        ...         "timeout": {"type": "integer", "default": 5000}
+        ...     },
+        ...     "required": ["url"]
+        ... }
+        >>> func = create_function_with_signature("test", "Test function", schema, impl)
+        >>> import inspect
+        >>> sig = inspect.signature(func)
+        >>> list(sig.parameters.keys())
+        ['url', 'timeout']
+    """
+    from typing import Any
+    import inspect
+
+    # Extract parameters from schema
+    properties = input_schema.get("properties", {})
+    required = set(input_schema.get("required", []))
+
+    # Build parameter list for function signature
+    params = []
+    for param_name, param_schema in properties.items():
+        python_type = json_schema_to_python_type(param_schema)
+
+        # Determine if parameter has a default
+        if param_name in required:
+            # Required parameter - no default
+            param = inspect.Parameter(
+                param_name,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                annotation=python_type
+            )
+        else:
+            # Optional parameter - use default if provided, otherwise None
+            default = param_schema.get("default", None)
+            param = inspect.Parameter(
+                param_name,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=default,
+                annotation=python_type
+            )
+        params.append(param)
+
+    # Create signature
+    sig = inspect.Signature(
+        params,
+        return_annotation=Any
+    )
+
+    # Create wrapper function that has the right signature
+    def wrapper(*args, **kwargs):
+        # Bind arguments to our signature
+        bound = sig.bind(*args, **kwargs)
+        bound.apply_defaults()
+        # Call implementation with bound arguments
+        return implementation(**bound.arguments)
+
+    # Set metadata
+    wrapper.__name__ = name
+    wrapper.__doc__ = description
+    wrapper.__signature__ = sig  # type: ignore
+    wrapper.__annotations__ = {
+        param.name: param.annotation
+        for param in params
+    }
+    wrapper.__annotations__['return'] = Any
+
+    return wrapper

@@ -62,3 +62,13 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--cov=mcp2py --cov-report=term-missing"
 
+[dependency-groups]
+dev = [
+    "anthropic>=0.71.0",
+    "dspy>=3.0.3",
+    "ipykernel>=7.0.1",
+    "ipython>=9.6.0",
+    "jupyter>=1.1.1",
+    "openai>=2.5.0",
+]
+
