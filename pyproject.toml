@@ -60,3 +60,8 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--cov=mcp2py --cov-report=term-missing"
+
+[dependency-groups]
+dev = [
+    "mcp>=1.18.0",
+]
