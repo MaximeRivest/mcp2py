@@ -18,7 +18,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "litellm>=1.0.0",
+    "mcp>=1.18.0",       # Official MCP Python SDK
+    "litellm>=1.0.0",    # For sampling (Phase 3)
 ]
 
 [project.optional-dependencies]
@@ -61,7 +62,3 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--cov=mcp2py --cov-report=term-missing"
 
-[dependency-groups]
-dev = [
-    "mcp>=1.18.0",
-]

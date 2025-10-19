@@ -675,6 +675,7 @@ name = "mcp2py"
 source = { editable = "." }
 dependencies = [
     { name = "litellm" },
+    { name = "mcp" },
 ]
 
 [package.optional-dependencies]
@@ -685,23 +686,16 @@ dev = [
     { name = "pytest-cov" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "mcp" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "litellm", specifier = ">=1.0.0" },
+    { name = "mcp", specifier = ">=1.18.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
 ]
 provides-extras = ["dev"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "mcp", specifier = ">=1.18.0" }]
 
 [[package]]
 name = "multidict"
