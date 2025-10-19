@@ -8,10 +8,12 @@ Example:
 
 __version__ = "0.1.0"
 
-# Will be implemented in phases
+# Phase 1.3: Protocol layer
+from mcp2py.protocol import MCPClient
+from mcp2py.transport import StdioTransport
+
+# Will be implemented in later phases
 # from mcp2py.loader import load, aload
 # from mcp2py.config import configure, register
 
-# __all__ = ["load", "aload", "configure", "register", "__version__"]
-
-__all__ = ["__version__"]
+__all__ = ["MCPClient", "StdioTransport", "__version__"]
