@@ -1,0 +1,50 @@
+
+```{python}
+from mcp2py import load
+from pathlib import Path
+
+# Use test server from repo
+test_server = Path(__file__).parent.parent / "tests" / "test_server.py"
+
+# Just load and use - cleanup is automatic
+server = load(f"uv run {test_server}")
+
+# Call tools
+result = server.echo(message="Hello!")
+print(result)
+
+result = server.add(a=5, b=3)
+print(result)
+```
+
+
+```{python}
+dir(server)
+```
+
+
+```{python}
+server.
+```
+
+```{python}
+server.get_documentation
+```
+
+```{python}
+
+
+server.generate_stubs("stub.pyi")
+
+```
+
+```{python}
+
+```
+
+```{python}
+from mcp2py import load
+
+server = load("npx -y @modelcontextprotocol/server-filesystem /tmp")
+server.list_directory(path="/tmp")
+```

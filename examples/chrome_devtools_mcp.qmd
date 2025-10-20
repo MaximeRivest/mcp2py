@@ -7,15 +7,19 @@ format: html
 
 This example demonstrates using the Chrome DevTools MCP server with mcp2py.
 
-
 ```{python}
 from mcp2py import load
 import dspy
 
-dspy.configure(lm=dspy.LM("openai/gpt-5", temperature = 1, max_tokens= 20000))
+dspy.configure(lm=dspy.LM("openai/gpt-4.1"))
 
 # Load MCP server
 browser = load("npx chrome-devtools-mcp@latest --headless")
+
+```
+
+
+```{python}
 
 # Pass tools directly to DSPy
 browser_agent = dspy.ReAct("command -> results", tools=browser.tools)
@@ -26,3 +30,4 @@ res = browser_agent(
 
 res
 ```
+

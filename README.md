@@ -202,18 +202,40 @@ print(response)
 
 ### Type Safety & IDE Support
 
+**Auto-generated stubs for perfect autocomplete:**
+
 ```python
-# Generated stubs provide autocomplete and type checking
 from mcp2py import load
 
+# Stubs auto-generated to ~/.cache/mcp2py/stubs/
 server = load("npx my-server")
 
-# IDE autocompletes available tools
+# IDE now has full autocomplete and type hints!
 server.search_files(
-    pattern="*.py",  # type: str
-    max_results=10   # type: int, optional
-)  # Returns: dict[str, Any]
+    pattern="*.py",  # type: str - IDE knows this!
+    max_results=10   # type: int, optional - IDE suggests this!
+)  # Returns: dict[str, Any] - IDE shows return type!
 ```
+
+**Manual stub generation:**
+
+```python
+# Generate stub to specific location for your project
+server = load("npx weather-server")
+server.generate_stubs("./stubs/weather.pyi")
+
+# Or let it auto-cache (default behavior)
+# Stubs saved to: ~/.cache/mcp2py/stubs/<command_hash>.pyi
+```
+
+**How it works:**
+- `load()` returns a **dynamically typed class** with all methods pre-defined
+- Your IDE sees proper type hints immediately - **no configuration needed!**
+- Type hints include parameter names, types, defaults, and return types
+- Works in VS Code, PyCharm, Jupyter notebooks, and any Python IDE
+- Also generates `.pyi` stub files to `~/.cache/mcp2py/stubs/` for reference
+
+**Zero configuration required** - autocomplete just works! ✨
 
 ## MCP Client Features
 
@@ -691,12 +713,24 @@ server = load("https://api.example.com/mcp")
 
 ### Stub Generation
 
-```bash
-# Generate .pyi stub files for IDE support
-mcp2py stub weather-server -o stubs/weather.pyi
+Stubs are automatically generated when you use `load()`. They're cached to `~/.cache/mcp2py/stubs/` for reuse.
 
-# Generate from running server
-mcp2py stub --server localhost:8080 -o stubs/api.pyi
+**Programmatic API:**
+
+```python
+from mcp2py import load
+
+# Stubs auto-generated on load
+server = load("npx weather-server")
+
+# Generate to specific path
+stub_path = server.generate_stubs("./stubs/weather.pyi")
+print(f"Stub saved to: {stub_path}")
+
+# Check cache location
+from mcp2py.stubs import get_stub_cache_path
+cache_path = get_stub_cache_path("npx weather-server")
+print(f"Cached at: {cache_path}")
 ```
 
 ### Complete Client Example

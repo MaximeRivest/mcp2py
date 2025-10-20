@@ -1,22 +1,26 @@
-"""MCPServer wrapper providing Pythonic interface to MCP tools.
+"""MCPServer wrapper providing Pythonic interface to MCP tools, resources, and prompts.
 
-This module provides the MCPServer class which wraps an MCPClient and exposes
-tools as Python methods with automatic name conversion and result unwrapping.
+This module provides the MCPServer class which wraps an MCPClient and exposes:
+- Tools as Python methods
+- Resources as Python attributes (constants or properties)
+- Prompts as Python template functions
 """
 
 import atexit
+from pathlib import Path
 from typing import Any
 
 from mcp2py.client import MCPClient
 from mcp2py.event_loop import AsyncRunner
-from mcp2py.schema import camel_to_snake
+from mcp2py.exceptions import MCPResourceError, MCPPromptError
+from mcp2py.schema import camel_to_snake, create_function_with_signature
 
 
 class MCPServer:
     """Pythonic wrapper around MCP client.
 
-    Exposes MCP tools as Python methods, handling async execution via
-    background event loop and providing clean synchronous API.
+    Exposes MCP tools as Python methods, resources as attributes,
+    and prompts as template functions.
 
     Example:
         >>> # Typically created via load(), not directly
@@ -33,6 +37,9 @@ class MCPServer:
         client: MCPClient,
         runner: AsyncRunner,
         tools: list[dict[str, Any]],
+        resources: list[dict[str, Any]],
+        prompts: list[dict[str, Any]],
+        command: str | list[str] | None = None,
     ) -> None:
         """Initialize MCP server wrapper.
 
@@ -40,34 +47,54 @@ class MCPServer:
             client: Connected MCPClient instance
             runner: AsyncRunner for sync/async bridge
             tools: List of tool schemas from server
+            resources: List of resource schemas from server
+            prompts: List of prompt schemas from server
+            command: Command used to start server (for stub caching)
         """
         self._client = client
         self._runner = runner
         self._tools = {tool["name"]: tool for tool in tools}
+        self._resources = {res["name"]: res for res in resources}
+        self._prompts = {prompt["name"]: prompt for prompt in prompts}
+        self._command = command
         self._closed = False
 
         # Create bidirectional mapping: snake_case <-> original
         self._name_map: dict[str, str] = {}
+        self._resource_name_map: dict[str, str] = {}
+        self._prompt_name_map: dict[str, str] = {}
+
         for original_name in self._tools.keys():
             snake_name = camel_to_snake(original_name)
-            # Only map if different (don't override already snake_case names)
             if snake_name != original_name:
                 self._name_map[snake_name] = original_name
+
+        for original_name in self._resources.keys():
+            snake_name = camel_to_snake(original_name)
+            if snake_name != original_name:
+                self._resource_name_map[snake_name] = original_name
+
+        for original_name in self._prompts.keys():
+            snake_name = camel_to_snake(original_name)
+            if snake_name != original_name:
+                self._prompt_name_map[snake_name] = original_name
 
         # Register cleanup on exit (for REPL/notebook usage without 'with')
         atexit.register(self.close)
 
     def __getattr__(self, name: str) -> Any:
-        """Dynamically create tool methods.
+        """Dynamically create tool methods, resource properties, or prompt functions.
 
         Args:
-            name: Tool name (snake_case or original)
+            name: Tool/resource/prompt name (snake_case or original)
 
         Returns:
-            Callable that executes the tool
+            Callable for tool/prompt, or value for resource
 
         Raises:
-            AttributeError: If tool not found
+            AttributeError: If not found
+            MCPResourceError: If resource fetch fails
+            MCPPromptError: If prompt execution fails
 
         Example:
             >>> server = load("python tests/test_server.py")
@@ -76,32 +103,106 @@ class MCPServer:
             True
             >>> server.close()
         """
-        # Try snake_case mapping first
-        original_name = self._name_map.get(name)
+        # Try tools first (most common)
+        tool_name = self._name_map.get(name) or (name if name in self._tools else None)
+        if tool_name:
+            tool_schema = self._tools[tool_name]
 
-        # If not in mapping, try exact match
-        if original_name is None:
-            if name not in self._tools:
-                available = sorted(
-                    set(list(self._name_map.keys()) + list(self._tools.keys()))
-                )
-                raise AttributeError(
-                    f"Tool '{name}' not found. Available tools: {', '.join(available)}"
-                )
-            original_name = name
+            def tool_method(**kwargs: Any) -> Any:
+                result = self._runner.run(self._client.call_tool(tool_name, kwargs))
+                return self._unwrap_result(result)
 
-        tool_schema = self._tools[original_name]
+            tool_method.__name__ = name
+            tool_method.__doc__ = tool_schema.get("description", "")
+            return tool_method
 
-        # Return callable that executes the tool
-        def tool_method(**kwargs: Any) -> Any:
-            result = self._runner.run(self._client.call_tool(original_name, kwargs))
-            return self._unwrap_result(result)
+        # Try resources second
+        resource_name = self._resource_name_map.get(name) or (
+            name if name in self._resources else None
+        )
+        if resource_name:
+            resource_schema = self._resources[resource_name]
+            uri = resource_schema["uri"]
+            try:
+                result = self._runner.run(self._client.read_resource(uri))
+                contents = result.get("contents", [])
+                if contents and len(contents) == 1:
+                    # Single content item - return text or blob
+                    item = contents[0]
+                    return item.get("text") or item.get("blob")
+                return contents
+            except Exception as e:
+                raise MCPResourceError(
+                    f"Failed to fetch resource '{name}': {e}"
+                ) from e
 
-        # Set metadata
-        tool_method.__name__ = name
-        tool_method.__doc__ = tool_schema.get("description", "")
+        # Try prompts third
+        prompt_name = self._prompt_name_map.get(name) or (
+            name if name in self._prompts else None
+        )
+        if prompt_name:
+            prompt_schema = self._prompts[prompt_name]
+            description = prompt_schema.get("description", "")
+            arguments = prompt_schema.get("arguments", [])
 
-        return tool_method
+            # Build input schema from arguments
+            properties = {}
+            required = []
+            for arg in arguments:
+                arg_name = arg["name"]
+                properties[arg_name] = {
+                    "type": "string",  # Prompts typically use strings
+                    "description": arg.get("description", ""),
+                }
+                if arg.get("required", False):
+                    required.append(arg_name)
+
+            input_schema = {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            }
+
+            # Create implementation
+            def make_prompt_impl(_prompt_name: str = prompt_name):
+                def impl(**kwargs: Any) -> Any:
+                    try:
+                        result = self._runner.run(
+                            self._client.get_prompt(_prompt_name, kwargs)
+                        )
+                        return result.get("messages", [])
+                    except Exception as e:
+                        raise MCPPromptError(
+                            f"Failed to execute prompt '{name}': {e}"
+                        ) from e
+
+                return impl
+
+            # Create function with proper signature
+            prompt_func = create_function_with_signature(
+                name=name,
+                description=description,
+                input_schema=input_schema,
+                implementation=make_prompt_impl(),
+            )
+
+            return prompt_func
+
+        # Not found in any category
+        available_tools = sorted(set(list(self._name_map.keys()) + list(self._tools.keys())))
+        available_resources = sorted(
+            set(list(self._resource_name_map.keys()) + list(self._resources.keys()))
+        )
+        available_prompts = sorted(
+            set(list(self._prompt_name_map.keys()) + list(self._prompts.keys()))
+        )
+
+        raise AttributeError(
+            f"'{name}' not found.\n"
+            f"Available tools: {', '.join(available_tools) if available_tools else 'none'}\n"
+            f"Available resources: {', '.join(available_resources) if available_resources else 'none'}\n"
+            f"Available prompts: {', '.join(available_prompts) if available_prompts else 'none'}"
+        )
 
     @property
     def tools(self) -> list[Any]:
@@ -253,3 +354,41 @@ class MCPServer:
             self.close()
         except Exception:
             pass
+
+    def generate_stubs(self, path: str | Path | None = None) -> Path:
+        """Generate .pyi stub file for IDE autocomplete support.
+
+        Args:
+            path: Optional path to save stub file. If None, saves to cache.
+
+        Returns:
+            Path where stub file was saved
+
+        Example:
+            >>> server = load("python tests/test_server.py")
+            >>> stub_path = server.generate_stubs("./stubs/server.pyi")
+            >>> stub_path.exists()
+            True
+            >>> server.close()
+        """
+        from mcp2py.stubs import generate_stub, get_stub_cache_path, save_stub
+
+        # Generate stub content
+        tools_list = list(self._tools.values())
+        resources_list = list(self._resources.values())
+        prompts_list = list(self._prompts.values())
+
+        stub_content = generate_stub(tools_list, resources_list, prompts_list)
+
+        # Determine save path
+        if path is None:
+            if self._command is None:
+                raise ValueError("Cannot auto-cache stub: no command provided")
+            save_path = get_stub_cache_path(self._command)
+        else:
+            save_path = Path(path)
+
+        # Save stub file
+        save_stub(stub_content, save_path)
+
+        return save_path

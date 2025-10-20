@@ -3,7 +3,7 @@ name = "mcp2py"
 dynamic = ["version"]
 description = "Turn any MCP server into a Python module"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     { name = "Maxime Rivest", email = "mrive052@gmail.com" }
@@ -65,10 +65,15 @@ addopts = "--cov=mcp2py --cov-report=term-missing"
 [dependency-groups]
 dev = [
     "anthropic>=0.71.0",
+    "claudette>=0.3.6",
     "dspy>=3.0.3",
+    "fastmcp>=2.12.4",
     "ipykernel>=7.0.1",
     "ipython>=9.6.0",
     "jupyter>=1.1.1",
     "openai>=2.5.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
 ]
 
